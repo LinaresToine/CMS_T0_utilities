@@ -13,6 +13,7 @@ from argparse import ArgumentParser
 import pprint
 from pprint import pformat
 from http.client import HTTPSConnection
+import ssl
 import subprocess
 from string import Template
 import re
@@ -51,8 +52,8 @@ def extract_replay_link():
     #"vocms0500": "https://cmst0.web.cern.ch/CMST0/tier0/offline_config/ReplayOfflineConfiguration_0500.php"
 #}
 
-kibanaUrl = extract_replay_link()
-print(kibanaUrl)
+#kibanaUrl = extract_replay_link()
+#print(kibanaUrl)
 
 #kibanaUrl = {
 #    "vocms015": "https://monit-grafana.cern.ch/d/_k0w6fcGz/cms-tier0-replay-vocms015?orgId=11&refresh=5s",
@@ -177,9 +178,12 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
     # We create another dictionary named agentNode with node ids as keys and each value will be the respective agent dictionary
 
 
-
+    NodeID = nodeId.split('.')[0]
     try:
-        connection = HTTPSConnection(host, cert_file=cert, key_file=key)
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_context.load_cert_chain(certfile=cert, keyfile=key)
+        #connection = HTTPSConnection(host)
+        connection = HTTPSConnection(host, context=ssl_context)
         urn = "/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo"
         params = {"stale": "update_after"}
         headers = {
@@ -188,7 +192,7 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
                     "User-Agent": "agentInfoCollector"
                     }
         urn = "%s?%s" % (urn, urllib.parse.urlencode(params, doseq=True))
-        connection.request("GET", urn, headers=headers)
+        connection.request("GET", urn, headers=headers) #key_file=key, cert_file=cert)
         response = connection.getresponse()
         if response.status != 200:
             errorMsg = "Error contacting CMSWEB WMStats\n"
@@ -199,10 +203,8 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
         WMStatsAgentInfo = json.loads(response.read()) # Contains information of all nodes and agents
         agentNode = {} 
         currentTime = time.strftime("%H:%M:%S")
-
-        #for i in range(len(WMStatsAgentStatus["rows"])):
-        nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfo if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent
-        nodeStatus = nodeInfo["value"]["status"]
+        nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfo["rows"] if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent
+        nodeStatus = {'status' : nodeInfo["value"]["status"]}
         jobsByState = nodeInfo["value"]["WMBS_INFO"]["wmbsCountByState"]
         activeRunJobs = nodeInfo["value"]["WMBS_INFO"]["activeRunJobByStatus"]
         JobStates = {'created' : jobsByState['created'],
@@ -214,13 +216,11 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
                      'cleanout' : jobsByState['cleanout'],
                      'paused' : jobsByState['jobpaused']
                     }
-        componentsDown = nodeInfo["value"]["down_components"]
+        componentsDown = {'Components Down' : nodeInfo["value"]["down_components"]}
         agent = {**nodeStatus, **JobStates, **componentsDown}
         agent.update({"updateTime" : currentTime})
         NodeID = nodeId.split('.')[0] # Gets the node id without '.cern.ch'
         agentNode.update({NodeID : agent})
-            
-
         return agentNode
     
     except Exception as msg:
@@ -436,9 +436,12 @@ def packedAgentDictionary(nodeId, tier0ConfigFile, key, cert, host, replay):
     try:
         NodeID = nodeId.split('.')[0]
         tier0Configuration = loadTier0Configuration(tier0ConfigFile, nodeId, replay)
-        agentInfo = loadAgentInfo(key, cert, host, nodeId, replay)[nodeId]
+        #print(tier0Configuration)
+        agentInfo = loadAgentInfo(key, cert, host, nodeId, replay)
+        #print(agentInfo)
         configUrlAndT0ast = loadConfigUrlAndT0astInstance(nodeId)
         PackedAgent = {NodeID : {**tier0Configuration[NodeID], **agentInfo[NodeID], **configUrlAndT0ast}}
+        #print(PackedAgent)
         return PackedAgent
     except IOError:
         print("Could not read nodeId:", nodeId)
@@ -447,8 +450,8 @@ def packedAgentDictionary(nodeId, tier0ConfigFile, key, cert, host, replay):
 def writeReport(Node, nodeId, replay):
     # This function is used to create the json files with all the node information in it. It takes a dictionary named Node, a nodeId and if it corresponds to replay
     NodeID = nodeId.split('.')[0]
-    outputFileProd="/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/data_{}.json".format(NodeID)
-    outputFileReplay="/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/dataReplay_{}.json".format(NodeID)
+    outputFileProd="/afs/cern.ch/user/c/cmst0/Antonio/data_{}.json".format(NodeID)
+    outputFileReplay="/afs/cern.ch/user/c/cmst0/Antonio/dataReplay_{}.json".format(NodeID)
     if replay:
             outputFile = outputFileReplay
     else:
@@ -481,17 +484,17 @@ def main():
         #replayNodes = loadAgentInfo("/data/certs/serviceproxy-vocms001.pem", "/data/certs/serviceproxy-vocms001.pem", replayWmstats, True)
 
         prodNode = packedAgentDictionary(nodeId, tier0ConfigFileProd, key, cert, prodWmstats, False)
-        replayNode = packedAgentDictionary(nodeId, tier0ConfigFileReplay, key, cert, replayWmstats, False)
+        #replayNode = packedAgentDictionary(nodeId, tier0ConfigFileReplay, key, cert, replayWmstats, replay)
         if not prodNode:
             print("Exiting. No report written for production nodes.")
         else:
-            writeReport(prodNode, False)
-        if not replayNode:
-            replayNode = {}
-            writeReport(replayNode, True)
-            print("Exiting. No report written for replay nodes.")
-        else:
-            writeReport(replayNode, True)
+            writeReport(prodNode, nodeId, False)
+        #if not replayNode:
+            #replayNode = {}
+            #writeReport(replayNode, True)
+            #print("Exiting. No report written for replay nodes.")
+        #else:
+            #writeReport(replayNode, True)
     except Exception as msg:
         print(msg)
         sys.exit(1)
