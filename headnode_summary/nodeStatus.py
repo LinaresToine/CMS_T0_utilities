@@ -227,34 +227,40 @@ def loadTier0Configuration(tier0ConfigFile, nodeId, replay):
     # To access the configuration info, the loadConfigurationFile(configFile) is used to create the tier0Config object with the agent configuration.
     # A dictionary configuration = {} is created, where all the relevant attributes of tier0Config will be saved
     # This function returns the dictionary configuration  
-    try:
-        configuration = {}
-        tier0Config = loadConfigurationFile(tier0ConfigFile)
-        CMSSWVersion = tier0Config.Datasets.Default.CMSSWVersion['default']
-        Scenario = tier0Config.Datasets.Default.Scenario
-        AcquisitionEra = tier0Config.Global.AcquisitionEra
-        configuration.update({'AcquisitionEra' : AcquisitionEra})
-        configuration.update({'CMSSWVersion' : CMSSWVersion})
-        if replay:
-            Runs = tier0Config.Global.InjectRuns
-            ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion
-            configuration.update({'Runs' : Runs})
-        else:
-            MinRun = tier0Config.Global.InjectMinRun
-            MaxRun = tier0Config.Global.InjectMaxRun
-            RecoDelay = tier0Config.Datasets.Default.RecoDelay / 3600
-            ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion['default']
-            configuration.update({'MinRun' : MinRun})
-            configuration.update({'MaxRun' : MaxRun})
-            configuration.update({'RecoDelay' : RecoDelay})
-        configuration.update({'ProcessingVersion' : ProcessingVersion})
-        configuration.update({'Scenario' : Scenario})
-        NodeID = nodeId.split('.')[0] # removes the '.cern.ch' from nodeId
-        nodeConfiguration = {NodeID : configuration}
-        return nodeConfiguration
     
+    NodeID = nodeId.split('.')[0] # removes the '.cern.ch' from nodeId
+
+    try:
+        tier0Config = loadConfigurationFile(tier0ConfigFile)
     except IOError:
         print("Could not read file:", tier0ConfigFile)
+        return {NodeID : {}}
+    
+    CMSSWVersion = tier0Config.Datasets.Default.CMSSWVersion['default']
+    Scenario = tier0Config.Datasets.Default.Scenario
+    AcquisitionEra = tier0Config.Global.AcquisitionEra
+    configuration = {'AcquisitionEra' : AcquisitionEra,
+                     'CMSSWVersion' : CMSSWVersion,
+                     'Scenario' : Scenario
+                     }
+    if replay:
+        Runs = tier0Config.Global.InjectRuns
+        ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion
+        configuration.update({'Runs' : Runs})
+    else:
+        MinRun = tier0Config.Global.InjectMinRun
+        MaxRun = tier0Config.Global.InjectMaxRun
+        RecoDelay = tier0Config.Datasets.Default.RecoDelay / 3600
+        ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion['default']
+        configuration.update({'MinRun' : MinRun})
+        configuration.update({'MaxRun' : MaxRun})
+        configuration.update({'RecoDelay' : RecoDelay})
+
+    configuration.update({'ProcessingVersion' : ProcessingVersion})
+    nodeConfiguration = {NodeID : configuration}
+
+    return nodeConfiguration
+    
 
     return
  
