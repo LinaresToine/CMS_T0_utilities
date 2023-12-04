@@ -444,9 +444,11 @@ def packedAgentDictionary(nodeId, tier0ConfigFile, key, cert, host, replay):
         print("Could not read nodeId:", nodeId)
 
 
-def writeReport(Node, replay):
-    outputFileProd="/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/data.json"
-    outputFileReplay="/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/dataReplay.json"
+def writeReport(Node, nodeId, replay):
+    # This function is used to create the json files with all the node information in it. It takes a dictionary named Node, a nodeId and if it corresponds to replay
+    NodeID = nodeId.split('.')[0]
+    outputFileProd="/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/data_{}.json".format(NodeID)
+    outputFileReplay="/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/dataReplay_{}.json".format(NodeID)
     if replay:
             outputFile = outputFileReplay
     else:
