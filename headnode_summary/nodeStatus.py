@@ -128,12 +128,12 @@ def instanceT0AST():
 ################################################################################################################################################################
 
 
-def loadAgentInfo(key, cert, host, replay):
+def loadAgentInfo(key, cert, host, nodeId, replay):
     # All agent information about running jobs, sites, and other, are accessible via wmstats. This is done thro HTTPSConnection. 
     # The output is a dictionary named agentStatus
-    # agentStatus is a dictionary with "rows", in which one row corresponds to all available agent information of one host node
-    # agentStatus["rows"] is a list! Each index of the list contains the agent information in a particular machine
-    # We define jobsByState = agentStatus["rows"][0]["value"]["WMBS_INFO"]["wmbsCountByState"] which is a dictionary with job states and their respective amounts 
+    # WMStatsAgentInfo is a dictionary with "rows", in which one row corresponds to all available agent information of one host node
+    # WMStatsAgentInfo["rows"] is a list! Each index of the list contains the agent information in a particular machine
+    # We define jobsByState = WMStatsAgentInfo["rows"][0]["value"]["WMBS_INFO"]["wmbsCountByState"] which is a dictionary with job states and their respective amounts 
     # in the agent of node in index 0
         # jobsByState is a dictionary that looks like 
         # {'submitcooloff': 0, 
@@ -156,7 +156,7 @@ def loadAgentInfo(key, cert, host, replay):
         #  'createcooloff': 0, 
         #  'jobcooloff': 0}
 
-    # We define activeRunJobs = agentStatus["rows"][0]["value"]["WMBS_INFO"]["activeRunJobByStatus"] which is a dictionary with the active job states and their respective amounts
+    # We define activeRunJobs = WMStatsAgentInfo["rows"][0]["value"]["WMBS_INFO"]["activeRunJobByStatus"] which is a dictionary with the active job states and their respective amounts
         # activeRunJobs is a dictionary that looks like
         #{'Suspended': 0, 
         # 'Held': 0, 
@@ -172,7 +172,7 @@ def loadAgentInfo(key, cert, host, replay):
     # jobsByState has job states as they are in wmbs
     # activeRunJobs has job states as they are in condor
     # We create a dictionary called JobStates which has the desired keys within the jobsByState and activeRunJobs dictionaries
-    # We define componentsDown = agentStatus["rows"][0]["value"]["down_components"]
+    # We define componentsDown = WMStatsAgentInfo["rows"][0]["value"]["down_components"]
     # The dictionary agent is JobStates with componentsDown
     # We create another dictionary named agentNode with node ids as keys and each value will be the respective agent dictionary
 
@@ -196,29 +196,29 @@ def loadAgentInfo(key, cert, host, replay):
             print(errorMsg)
             raise Exception(errorMsg)
         
-        agentStatus = json.loads(response.read()) 
+        WMStatsAgentInfo = json.loads(response.read()) # Contains information of all nodes and agents
         agentNode = {} 
         currentTime = time.strftime("%H:%M:%S")
 
-        for i in range(len(agentStatus["rows"])):
-            node = agentStatus["rows"][i]
-            nodeStatus = node["value"]["status"]
-            nodeId = node["id"][:-8]
-            jobsByState = node["value"]["WMBS_INFO"]["wmbsCountByState"]
-            activeRunJobs = node["value"]["WMBS_INFO"]["activeRunJobByStatus"]
-            JobStates = {'created' : jobsByState['created'],
-                         'executing' : jobsByState['executing'],
-                         'running' : activeRunJobs['Running'],
-                         'idle' : activeRunJobs['Idle'],
-                         'success' : jobsByState['success'],
-                         'complete' : jobsByState['complete'],
-                         'cleanout' : jobsByState['cleanout'],
-                         'paused' : jobsByState['jobpaused']
-                        }
-            componentsDown = agentStatus["rows"][i]["value"]["down_components"]
-            agent = {**nodeStatus, **JobStates, **componentsDown}
-            agent.update({"updateTime" : currentTime})
-            agentNode.update({nodeId : agent})
+        #for i in range(len(WMStatsAgentStatus["rows"])):
+        nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfo if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent
+        nodeStatus = nodeInfo["value"]["status"]
+        jobsByState = nodeInfo["value"]["WMBS_INFO"]["wmbsCountByState"]
+        activeRunJobs = nodeInfo["value"]["WMBS_INFO"]["activeRunJobByStatus"]
+        JobStates = {'created' : jobsByState['created'],
+                     'executing' : jobsByState['executing'],
+                     'running' : activeRunJobs['Running'],
+                     'idle' : activeRunJobs['Idle'],
+                     'success' : jobsByState['success'],
+                     'complete' : jobsByState['complete'],
+                     'cleanout' : jobsByState['cleanout'],
+                     'paused' : jobsByState['jobpaused']
+                    }
+        componentsDown = nodeInfo["value"]["down_components"]
+        agent = {**nodeStatus, **JobStates, **componentsDown}
+        agent.update({"updateTime" : currentTime})
+        NodeID = nodeId.split('.')[0] # Gets the node id without '.cern.ch'
+        agentNode.update({NodeID : agent})
             
 
         return agentNode
@@ -329,14 +329,13 @@ def loadAgentInfo(key, cert, host, replay):
 ################################################################################################################################################################
 
 
-def loadTier0Configuration(tier0ConfigFile, replay):
+def loadTier0Configuration(tier0ConfigFile, nodeId, replay):
     # All relevant information of the agent configuration resides in the configuration file. There, an object of type Configuration() is created.
     # To access the configuration info, the loadConfigurationFile(configFile) is used to create the tier0Config object with the agent configuration.
     # A dictionary configuration = {} is created, where all the relevant attributes of tier0Config will be saved
     # This function returns the dictionary configuration  
     try:
         configuration = {}
-        nodeId = subprocess.check_output(['hostname'], universal_newlines=True)[:-9]
         tier0Config = loadConfigurationFile(tier0ConfigFile)
         CMSSWVersion = tier0Config.Datasets.Default.CMSSWVersion['default']
         ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion['default']
@@ -362,7 +361,8 @@ def loadTier0Configuration(tier0ConfigFile, replay):
             configuration.update({'Scenario' : Scenario})
             configuration.update({'RecoDelay' : RecoDelay})
     
-        nodeConfiguration = {nodeId : configuration}
+        NodeID = nodeId.split('.')[0] # removes the '.cern.ch' from nodeId
+        nodeConfiguration = {NodeID : configuration}
         return nodeConfiguration
     
     except IOError:
@@ -419,38 +419,39 @@ def loadTier0Configuration(tier0ConfigFile, replay):
 def loadConfigUrlAndT0astInstance(nodeId):
     # This function returns a dictionary with the configuration file url and the T0AST instance relevant to a specific nodeId
     # This function is created to keep order of the tasks acomplished by the other load functions
+    NodeID = nodeId.split('.')[0]
     nodeFileUrl = configurationFileUrl()
     nodeT0ast = instanceT0AST()
-    nodeFileAndAST = {'nodeId' : nodeId,
-                      'configFileUrl' : nodeFileUrl[nodeId],
-                      'T0ast' : nodeT0ast[nodeId] 
+    nodeFileAndAST = {'nodeId' : NodeID,
+                      'configFileUrl' : nodeFileUrl[NodeID],
+                      'T0ast' : nodeT0ast[NodeID] 
                       }
     return nodeFileAndAST
 
-def packedAgentDictionary(tier0ConfigFile, key, cert, host, replay):
+def packedAgentDictionary(nodeId, tier0ConfigFile, key, cert, host, replay):
     # Gets dictionary returned by loadTier0Configuration, which contains relevant configuration information of the agent
     # Gets dictionary returned by loadAgentInfo, which contains info such as count of jobs by status, components down, node status
     # Gets dictionary from loadConfigUrlAndT0astInstance, which contains a link to a php configuration file and also the respective T0AST instance
     # Unites all three dictionaries into one named PackedAgent
     try:
-        tier0Configuration = loadTier0Configuration(tier0ConfigFile, replay)
-        nodeId = list(tier0Configuration)[0]
-        agentInfo = loadAgentInfo(key, cert, host, replay)[nodeId]
+        NodeID = nodeId.split('.')[0]
+        tier0Configuration = loadTier0Configuration(tier0ConfigFile, nodeId, replay)
+        agentInfo = loadAgentInfo(key, cert, host, nodeId, replay)[nodeId]
         configUrlAndT0ast = loadConfigUrlAndT0astInstance(nodeId)
-        PackedAgent = {nodeId : {**tier0Configuration[nodeId], **agentInfo[nodeId], **configUrlAndT0ast}}
+        PackedAgent = {NodeID : {**tier0Configuration[NodeID], **agentInfo[NodeID], **configUrlAndT0ast}}
         return PackedAgent
     except IOError:
         print("Could not read nodeId:", nodeId)
 
 
-def writeReport(allNodes, replay):
+def writeReport(Node, replay):
     outputFileProd="/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/data.json"
     outputFileReplay="/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/dataReplay.json"
     if replay:
             outputFile = outputFileReplay
     else:
             outputFile = outputFileProd
-    data = allNodes
+    data = Node
     with open(outputFile, 'w') as outfile:
             json.dump(data, outfile)
 
@@ -461,24 +462,34 @@ def main():
     Script's main function:
         fetch exceptions of failing t0 jobs.
     """
-    try:
-        subprocess.call(['./cpOfflineConfig.sh'])
-        #os.chdir("/afs/cern/ch/work/c/cmst0/private")
-        prodWmstats = "cmsweb.cern.ch"
-        replayWmstats = "cmsweb-testbed.cern.ch"
+    tier0ConfigFileProd = "/data/tier0/admin/ProdOfflineConfiguration.py"
+    tier0ConfigFileReplay = "/data/tier0/admin/ReplayOfflineConfiguration.py"
+    nodeId = subprocess.check_output('hostname', universal_newlines=True).strip() # Gets the vocms node id
+    prodWmstats = "cmsweb.cern.ch"
+    replayWmstats = "cmsweb-testbed.cern.ch"
+    key = "/data/certs/serviceproxy-vocms001.pem"
+    cert = "/data/certs/serviceproxy-vocms001.pem"
 
-        prodNodes = loadAgentInfo("/data/certs/serviceproxy-vocms001.pem", "/data/certs/serviceproxy-vocms001.pem", prodWmstats, False)
-        replayNodes = loadAgentInfo("/data/certs/serviceproxy-vocms001.pem", "/data/certs/serviceproxy-vocms001.pem", replayWmstats, True)
-        if not prodNodes:
+    try:
+        #subprocess.call(['./cpOfflineConfig.sh'])
+        #os.chdir("/afs/cern/ch/work/c/cmst0/private")
+
+
+        #prodNodes = loadAgentInfo("/data/certs/serviceproxy-vocms001.pem", "/data/certs/serviceproxy-vocms001.pem", prodWmstats, False)
+        #replayNodes = loadAgentInfo("/data/certs/serviceproxy-vocms001.pem", "/data/certs/serviceproxy-vocms001.pem", replayWmstats, True)
+
+        prodNode = packedAgentDictionary(nodeId, tier0ConfigFileProd, key, cert, prodWmstats, False)
+        replayNode = packedAgentDictionary(nodeId, tier0ConfigFileReplay, key, cert, replayWmstats, False)
+        if not prodNode:
             print("Exiting. No report written for production nodes.")
         else:
-            writeReport(prodNodes, False)
-        if not replayNodes:
-            replayNodes = {}
-            writeReport(replayNodes, True)
+            writeReport(prodNode, False)
+        if not replayNode:
+            replayNode = {}
+            writeReport(replayNode, True)
             print("Exiting. No report written for replay nodes.")
         else:
-            writeReport(replayNodes, True)
+            writeReport(replayNode, True)
     except Exception as msg:
         print(msg)
         sys.exit(1)
