@@ -176,9 +176,7 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
     # We define componentsDown = WMStatsAgentInfo["rows"][0]["value"]["down_components"]
     # The dictionary agent is JobStates with componentsDown
     # We create another dictionary named agentNode with node ids as keys and each value will be the respective agent dictionary
-
-
-    NodeID = nodeId.split('.')[0]
+    NodeID = nodeId.split('.')[0] # Gets the node id without '.cern.ch'
     try:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(certfile=cert, keyfile=key)
@@ -194,43 +192,36 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
         urn = "%s?%s" % (urn, urllib.parse.urlencode(params, doseq=True))
         connection.request("GET", urn, headers=headers) #key_file=key, cert_file=cert)
         response = connection.getresponse()
-        if response.status != 200:
-            errorMsg = "Error contacting CMSWEB WMStats\n"
-            errorMsg += "Response status: %s\tResponse reason: %s\n" % (response.status, response.reason)
-            print(errorMsg)
-            raise Exception(errorMsg)
-        
         WMStatsAgentInfo = json.loads(response.read()) # Contains information of all nodes and agents
-        agentNode = {} 
-        currentTime = time.strftime("%H:%M:%S")
-        nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfo["rows"] if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent
-        nodeStatus = {'status' : nodeInfo["value"]["status"]}
-        jobsByState = nodeInfo["value"]["WMBS_INFO"]["wmbsCountByState"]
-        activeRunJobs = nodeInfo["value"]["WMBS_INFO"]["activeRunJobByStatus"]
-        JobStates = {'created' : jobsByState['created'],
-                     'executing' : jobsByState['executing'],
-                     'running' : activeRunJobs['Running'],
-                     'idle' : activeRunJobs['Idle'],
-                     'success' : jobsByState['success'],
-                     'complete' : jobsByState['complete'],
-                     'cleanout' : jobsByState['cleanout'],
-                     'paused' : jobsByState['jobpaused']
-                    }
-        componentsDown = {'Components Down' : nodeInfo["value"]["down_components"]}
-        agent = {**nodeStatus, **JobStates, **componentsDown}
-        agent.update({"updateTime" : currentTime})
-        NodeID = nodeId.split('.')[0] # Gets the node id without '.cern.ch'
-        agentNode.update({NodeID : agent})
-        return agentNode
-    
-    except Exception as msg:
-        message = 'Error: %s' % str(msg)
-        print(message)
-        return None
+    except:
+        errorMsg = "Error contacting CMSWEB WMStats\n"
+        errorMsg += f"Response status: {response.status}\tResponse reason: {response.reason}\n"
+        print(errorMsg)
+        return {NodeID : {}}
     finally:
         connection.close()
+    nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfo["rows"] if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent. It may be None if the agent is not in wmstats
+    #print ('nodeInfo is {}'.format(nodeInfo))
+    try:
+        jobsByState = nodeInfo["value"]["WMBS_INFO"]["wmbsCountByState"] # Job status in WMBS
+        activeRunJobs = nodeInfo["value"]["WMBS_INFO"]["activeRunJobByStatus"] # Job status in condor
+        agent = {'status' : nodeInfo["value"]["status"],
+                 'created' : jobsByState['created'],
+                 'executing' : jobsByState['executing'],
+                 'running' : activeRunJobs['Running'],
+                 'idle' : activeRunJobs['Idle'],
+                 'success' : jobsByState['success'],
+                 'complete' : jobsByState['complete'],
+                 'cleanout' : jobsByState['cleanout'],
+                 'paused' : jobsByState['jobpaused'],
+                 'components down' : nodeInfo["value"]["down_components"]
+                }
+    
+        agentNode = {NodeID : agent}
+    except:
+        agentNode = {NodeID : {}}
 
-
+    return agentNode
 
 
 
@@ -338,12 +329,12 @@ def loadTier0Configuration(tier0ConfigFile, nodeId, replay):
         configuration = {}
         tier0Config = loadConfigurationFile(tier0ConfigFile)
         CMSSWVersion = tier0Config.Datasets.Default.CMSSWVersion['default']
-        ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion['default']
         Scenario = tier0Config.Datasets.Default.Scenario
         AcquisitionEra = tier0Config.Global.AcquisitionEra
 
         if replay:
             Runs = tier0Config.Global.InjectRuns
+            ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion
             configuration.update({'AcquisitionEra' : AcquisitionEra})
             configuration.update({'CMSSWVersion' : CMSSWVersion})
             configuration.update({'Runs' : Runs})
@@ -351,6 +342,7 @@ def loadTier0Configuration(tier0ConfigFile, nodeId, replay):
             configuration.update({'Scenario' : Scenario}) 
         else:
             RecoDelay = tier0Config.Datasets.Default.RecoDelay / 3600 
+            ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion['default']
             MinRun = tier0Config.Global.InjectMinRun
             MaxRun = tier0Config.Global.InjectMaxRun
             configuration.update({'AcquisitionEra' : AcquisitionEra})
@@ -436,12 +428,17 @@ def packedAgentDictionary(nodeId, tier0ConfigFile, key, cert, host, replay):
     try:
         NodeID = nodeId.split('.')[0]
         tier0Configuration = loadTier0Configuration(tier0ConfigFile, nodeId, replay)
-        #print(tier0Configuration)
+        print('t0 config is {}'.format(tier0Configuration))
         agentInfo = loadAgentInfo(key, cert, host, nodeId, replay)
-        #print(agentInfo)
+        print('agent info is {}'.format(agentInfo))
         configUrlAndT0ast = loadConfigUrlAndT0astInstance(nodeId)
         PackedAgent = {NodeID : {**tier0Configuration[NodeID], **agentInfo[NodeID], **configUrlAndT0ast}}
-        #print(PackedAgent)
+        # Finally we record the time in which the final dictionary was updated
+        currentTime = time.strftime("%H:%M:%S")
+        PackedAgent.update({'update time' : currentTime})
+        print('agent is {}'.format(PackedAgent))
+        print('\n')
+        print('======================================================================================================================')
         return PackedAgent
     except IOError:
         print("Could not read nodeId:", nodeId)
@@ -484,17 +481,17 @@ def main():
         #replayNodes = loadAgentInfo("/data/certs/serviceproxy-vocms001.pem", "/data/certs/serviceproxy-vocms001.pem", replayWmstats, True)
 
         prodNode = packedAgentDictionary(nodeId, tier0ConfigFileProd, key, cert, prodWmstats, False)
-        #replayNode = packedAgentDictionary(nodeId, tier0ConfigFileReplay, key, cert, replayWmstats, replay)
+        replayNode = packedAgentDictionary(nodeId, tier0ConfigFileReplay, key, cert, replayWmstats, True)
         if not prodNode:
             print("Exiting. No report written for production nodes.")
         else:
             writeReport(prodNode, nodeId, False)
-        #if not replayNode:
-            #replayNode = {}
-            #writeReport(replayNode, True)
-            #print("Exiting. No report written for replay nodes.")
-        #else:
-            #writeReport(replayNode, True)
+        if not replayNode:
+            replayNode = {}
+            writeReport(replayNode, nodeId, True)
+            print("Exiting. No report written for replay nodes.")
+        else:
+            writeReport(replayNode, nodeId, True)
     except Exception as msg:
         print(msg)
         sys.exit(1)
