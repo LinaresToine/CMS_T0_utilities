@@ -105,8 +105,6 @@ def configurationFileUrl():
                   #"vocms015": "https://cmst0.web.cern.ch/CMST0/tier0/offline_config/ReplayOfflineConfiguration_015.php",
     }
     return configUrl
-################################################################################################################################################################
-################################################################################################################################################################
 
 def instanceT0AST():
     t0ast = {"vocms013": "CMS_T0AST_4",
@@ -125,11 +123,8 @@ def instanceT0AST():
              #"vocms015": "CMS_T0AST_REPLAY4"
             }
     return t0ast
-################################################################################################################################################################
-################################################################################################################################################################
 
-
-def loadAgentInfo(key, cert, host, nodeId, replay):
+def loadCmswebInfo(key, cert, host):
     # All agent information about running jobs, sites, and other, are accessible via wmstats. This is done thro HTTPSConnection. 
     # The output is a dictionary named agentStatus
     # WMStatsAgentInfo is a dictionary with "rows", in which one row corresponds to all available agent information of one host node
@@ -176,7 +171,6 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
     # We define componentsDown = WMStatsAgentInfo["rows"][0]["value"]["down_components"]
     # The dictionary agent is JobStates with componentsDown
     # We create another dictionary named agentNode with node ids as keys and each value will be the respective agent dictionary
-    NodeID = nodeId.split('.')[0] # Gets the node id without '.cern.ch'
     try:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(certfile=cert, keyfile=key)
@@ -192,15 +186,19 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
         urn = "%s?%s" % (urn, urllib.parse.urlencode(params, doseq=True))
         connection.request("GET", urn, headers=headers) #key_file=key, cert_file=cert)
         response = connection.getresponse()
-        WMStatsAgentInfo = json.loads(response.read()) # Contains information of all nodes and agents
+        WMStatsAgentInfo = json.loads(response.read()) # A list with dictionaries where each dictionary contains information of a node and its agent
+        return WMStatsAgentInfo["rows"]
     except:
         errorMsg = "Error contacting CMSWEB WMStats\n"
         errorMsg += f"Response status: {response.status}\tResponse reason: {response.reason}\n"
         print(errorMsg)
-        return {NodeID : {}}
+        return []
     finally:
         connection.close()
-    nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfo["rows"] if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent. It may be None if the agent is not in wmstats
+
+def loadAgentInfo(WMStatsAgentInfoList, nodeId):
+    NodeID = nodeId.split('.')[0]
+    nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfoList if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent. It may be None if the agent is not in wmstats
     #print ('nodeInfo is {}'.format(nodeInfo))
     try:
         jobsByState = nodeInfo["value"]["WMBS_INFO"]["wmbsCountByState"] # Job status in WMBS
@@ -222,102 +220,6 @@ def loadAgentInfo(key, cert, host, nodeId, replay):
         agentNode = {NodeID : {}}
 
     return agentNode
-
-
-
-        #print(jsonObject["rows"])
-        #for singleRow in jsonObject["rows"]:
-            #singleRow = jsonObject["rows"][i]
-            #print(singleRow)
-            #tempdict = {}
-            #nodeId = singleRow["id"].split(".")[0]
-            #nodeStatus = singleRow["value"]["status"]
-            #print(nodeStatus)
-            #if not singleRow["value"]["WMBS_INFO"]["wmbsCountByState"] or "jobpaused" not in singleRow["value"]["WMBS_INFO"]["wmbsCountByState"]:
-            #    pausedJobs = 0
-            #else:
-            #    pausedJobs = singleRow["value"]["WMBS_INFO"]["wmbsCountByState"]["jobpaused"]
-            #parsed = getRunIntervals(nodeId, replay)
-            #print(parsed)
-            #if singleRow["value"]["WMBS_INFO"]["wmbsCountByState"]:
-                #print(singleRow["value"]["WMBS_INFO"]["wmbsCountByState"])
-                #parsed.update(singleRow["value"]["WMBS_INFO"]["wmbsCountByState"])
-                #print("parse 1")
-                #print(parsed)
-            #if singleRow["value"]["WMBS_INFO"]["activeRunJobByStatus"]:
-                #print(singleRow["value"]["WMBS_INFO"]["activeRunJobByStatus"])
-                #parsed.update(singleRow["value"]["WMBS_INFO"]["activeRunJobByStatus"])
-                #print(parsed)
-            #print(pausedJobs)
-            #componentsDown = singleRow["value"]["down_components"]
-            #print(componentsDown)
-            # if there are down components, we need a notification
-            #if len(componentsDown) > 0 and not replay:
-            #    print("There are down components")
-                #parseComponentErrors(nodeId, singleRow["value"])
-            #print(componentsDown)
-            #parsed = getRunIntervals(nodeId, replay)
-            #if replay:
-                #conf = replayConfigUrl
-### ----------------------------------------------------------------------- ###
-                #if nodeId in kibanaUrl:
-                    #print(nodeId)
-                    #parsed.update({"monitoringUrl": kibanaUrl[nodeId]})
-### ----------------------------------------------------------------------- ###
-            #else:
-                #conf = configUrl
-            #parsed.update({ "nodeStatus": nodeStatus, "downComponents": componentsDown, "updateTime": currentTime})
-            #if nodeId in conf:
-                #parsed.update({ "configurationFile": conf[nodeId] })
-            #else:
-                #print("no configuration file found for %s", nodeId)
-            #if nodeId in t0astInst:
-                #parsed.update({ "t0astInst": t0astInst[nodeId] })
-            #print(parsed)
-            #productionNodes.update({nodeId: parsed})
-
-        #print(productionNodes)
-        #return productionNodes
-
-################################################################################################################################################################
-################################################################################################################################################################
-
-
-#def getRunIntervals(productionNode, replay):
-    #fullPath = "/data/tier0/admin/"
-    #containerPath = "/data/tier0/docker/container1/admin/"
-    #containerNode = "vocms047"
-    #replayConfig = "ReplayOfflineConfiguration.py"
-    #prodConfig = "ProdOfflineConfiguration.py"
-    #fullPastePath = "/afs/cern.ch/work/c/cmst0/public/ProductionConfigurationOfflineFiles/"
-    #wmagentPath="/data/tier0/srv/wmagent/"
-
-    #try:
-        #if replay:
-            #srcFileName = fullPath + replayConfig
-            #destFileName = fullPastePath+productionNode+replayConfig
-            #if productionNode[0] == u'C':
-                #srcFileName = containerPath + replayConfig
-                #productionNode = containerNode
-        #else:
-            #srcFileName = fullPath + prodConfig
-            #destFileName = fullPastePath+productionNode+prodConfig
-        #subprocess.check_call(["ssh", productionNode, "cp", srcFileName, destFileName])
-        #subprocess.check_call(["ssh", productionNode, "sudo", "-u", "cmst1", "/bin/bash;", "cat", "/data/tier0/srv/wmagent/current/config/tier0/config.py"])
-        #minMaxRuns = parseConfigFile(destFileName, replay)
-        #t0Path=subprocess.check_output(['ssh',productionNode,'ls','-l',wmagentPath+"current"])
-        #t0Version=t0Path.strip().split("-> ")[-1]
-        #minMaxRuns.update({"tier0Version": t0Version})
-        #print(minMaxRuns)
-        #return minMaxRuns
-    #except Exception as msg:
-        #print("getRunIntervals")
-        #print(productionNode)
-        #print(str(msg))
-        #return None
-
-################################################################################################################################################################
-################################################################################################################################################################
 
 
 def loadTier0Configuration(tier0ConfigFile, nodeId, replay):
@@ -361,53 +263,7 @@ def loadTier0Configuration(tier0ConfigFile, nodeId, replay):
         print("Could not read file:", tier0ConfigFile)
 
     return
-    #parsed = {}
-    ##print(fileName +" "+ str(replay))
-    #try:
-    #    with open(fileName) as f:
-    #        for line in f:
-    #            if not replay and line.startswith("setInjectMinRun"):
-    #                minRun=line.strip().split(",")[-1][:-1][1:]
-    #                if not minRun:
-    #                    minRun = None
-    #                parsed.update({"setInjectMinRun": minRun})
-    #                #print(minRun)
-    #            if not replay and line.startswith("setInjectMaxRun"):
-    #                maxRun=line.strip().split(",")[-1][:-1][1:]
-    #                if not maxRun:
-    #                    maxRun = None
-    #                parsed.update({"setInjectMaxRun": maxRun})
-    #                #print(maxRun)
-    #            if not replay and line.startswith("defaultRecoTimeout"):
-    #                recoDelay=line.strip().split("=")[-1]
-    #                #print(recoDelay)
-    #                recoDelay = eval(recoDelay) / 3600
-    #                #if not recoDelay:
-    #                #    recoDelay = ""
-    #                #print("Reco delay is: "+str(recoDelay))
-    #                parsed.update({"PromptRecoDelay": recoDelay})
-    #            if "CMSSW" in line and "'default'" in line and not 'defaultCMSSWVersion' in line:
-    #                cmssw = line.strip().split(":")[-1].strip("\"")[2:]
-    #                parsed.update({"cmsswVersion": cmssw})
-    #                #print(cmssw)
-    #            if line.startswith("ppScenario "):
-    #                ppScenario = line.strip().split("=")[-1].strip("\"")[2:]
-    #                parsed.update({"processingScenario": ppScenario})
-    #                #print(ppScenario)
-    #            if  replay and line.startswith("setInjectRuns"):
-    #                #print(line.strip())
-    #                if replay:
-    #                    injectedRuns = re.search('%s(.*)%s' % ('\[', '\]'), line.strip()).group(1)
-    #                else:
-    #                    injectedRuns = re.search('%s(.*)%s' % ('\[', ' '), line.strip()).group(1)
-    #                #print(injectedRuns)
-    #                parsed.update({"injectedRuns": injectedRuns})
-    #    #print("Parsed contents of" + fileName)
-    #    #print(parsed)
-    #    return parsed
-################################################################################################################################################################
-################################################################################################################################################################
-
+ 
 def loadConfigUrlAndT0astInstance(nodeId):
     # This function returns a dictionary with the configuration file url and the T0AST instance relevant to a specific nodeId
     # This function is created to keep order of the tasks acomplished by the other load functions
@@ -429,16 +285,23 @@ def packedAgentDictionary(nodeId, tier0ConfigFile, key, cert, host, replay):
         NodeID = nodeId.split('.')[0]
         tier0Configuration = loadTier0Configuration(tier0ConfigFile, nodeId, replay)
         print('t0 config is {}'.format(tier0Configuration))
-        agentInfo = loadAgentInfo(key, cert, host, nodeId, replay)
+
+        WMStatsAgentInfoList = loadCmswebInfo(key, cert, host)
+        agentInfo = loadAgentInfo(WMStatsAgentInfoList, nodeId)
         print('agent info is {}'.format(agentInfo))
+
         configUrlAndT0ast = loadConfigUrlAndT0astInstance(nodeId)
         PackedAgent = {NodeID : {**tier0Configuration[NodeID], **agentInfo[NodeID], **configUrlAndT0ast}}
         # Finally we record the time in which the final dictionary was updated
+
         currentTime = time.strftime("%H:%M:%S")
         PackedAgent.update({'update time' : currentTime})
+        
         print('agent is {}'.format(PackedAgent))
         print('\n')
         print('======================================================================================================================')
+        print('\n')
+
         return PackedAgent
     except IOError:
         print("Could not read nodeId:", nodeId)
@@ -473,12 +336,6 @@ def main():
     cert = "/data/certs/serviceproxy-vocms001.pem"
 
     try:
-        #subprocess.call(['./cpOfflineConfig.sh'])
-        #os.chdir("/afs/cern/ch/work/c/cmst0/private")
-
-
-        #prodNodes = loadAgentInfo("/data/certs/serviceproxy-vocms001.pem", "/data/certs/serviceproxy-vocms001.pem", prodWmstats, False)
-        #replayNodes = loadAgentInfo("/data/certs/serviceproxy-vocms001.pem", "/data/certs/serviceproxy-vocms001.pem", replayWmstats, True)
 
         prodNode = packedAgentDictionary(nodeId, tier0ConfigFileProd, key, cert, prodWmstats, False)
         replayNode = packedAgentDictionary(nodeId, tier0ConfigFileReplay, key, cert, replayWmstats, True)
