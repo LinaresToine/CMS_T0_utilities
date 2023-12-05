@@ -215,7 +215,7 @@ def packedAgentDictionary(nodeId, NodeID, tier0ConfigFile, key, cert, host, repl
         configUrlAndT0ast = loadConfigUrlAndT0astInstance(NodeID)
         PackedAgent = {NodeID : {**tier0Configuration[NodeID], **agentInfo[NodeID], **configUrlAndT0ast}}
     else:
-        PackedAgent = {NodeID : agentInfo} # This one looks like {vocms0313 : {'agent in wmstats' : False}} 
+        PackedAgent = {NodeID : agentInfo[NodeID]} # This one looks like {vocms0313 : {'agent in wmstats' : False}} 
 
     # Finally we record the time in which the final dictionary was updated
     currentTime = time.strftime("%H:%M:%S")
@@ -258,13 +258,13 @@ def main():
     replayNode = packedAgentDictionary(nodeId, NodeID, tier0ConfigFileReplay, key, cert, replayWmstats, True)
 
     if productionNode[NodeID]['agent in wmstats']:
-        writeReport(productionNode, NodeID, False)
+        writeJsonFile(productionNode, NodeID, False)
         print ('Report for production node {} has been written successfully'.format(NodeID))
     else:
         print ("No information for the production node {}".format(NodeID))
 
     if replayNode[NodeID]['agent in wmstats']:
-        writeReport(replayNode, NodeID, True)
+        writeJsonFile(replayNode, NodeID, True)
         print ('Report for replay node {} has been written successfully'.format(NodeID))
     else:
         print ("No information for the replay node {}".format(NodeID))
