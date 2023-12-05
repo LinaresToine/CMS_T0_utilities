@@ -290,13 +290,13 @@ def main():
     prodNode = packedAgentDictionary(nodeId, NodeID, tier0ConfigFileProd, key, cert, prodWmstats, False)
     replayNode = packedAgentDictionary(nodeId, NodeID, tier0ConfigFileReplay, key, cert, replayWmstats, True)
 
-    if len(prodNode[NodeID] > 0):
+    if len(prodNode[NodeID]) > 0:
         writeReport(prodNode, NodeID, False)
         print ('Report for production node {} has been written successfully'.format(NodeID))
     else:
         print ("No information for the production node {}".format(NodeID))
 
-    if len(replayNode[NodeID] > 0):
+    if len(replayNode[NodeID]) > 0:
         writeReport(replayNode, NodeID, True)
         print ('Report for replay node {} has been written successfully'.format(NodeID))
     else:
