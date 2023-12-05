@@ -1,40 +1,13 @@
 #! /usr/bin/env python
 
 import sys
-import os
 import json
 import time
-from datetime import datetime
-import socket
-import logging
 import urllib.parse
-from logging.handlers import RotatingFileHandler
-from argparse import ArgumentParser
-import pprint
-from pprint import pformat
 from http.client import HTTPSConnection
 import ssl
 import subprocess
-from string import Template
-import re
 from WMCore.Configuration import loadConfigurationFile
-#from pprint import pprint
-#import simplejson
-
-# All these params should not be hardcoded:
-
-def extract_replay_link():
-    kibana = {}
-    with open('replay_ids.txt', 'r') as file:
-        nodes_info = file.readlines()
-        for line in nodes_info:
-            if len(line.split())==3:
-                key = "{}".format(line.split()[0])
-                kibana[key] = "{}".format(line.split()[2])
-            else:
-                print("No kibana key available for node %s" % line.split()[0])
-    return kibana
-
 
 def configurationFileUrl():
     configUrl = { "vocms013": "http://cmst0.web.cern.ch/CMST0/tier0/offline_config/ProdOfflineConfiguration_013.php",
@@ -50,11 +23,11 @@ def configurationFileUrl():
                   "C2_vocms047": "https://cmst0.web.cern.ch/CMST0/tier0/offline_config/ReplayOfflineConfiguration_C2.php",
                   "C3_vocms047": "https://cmst0.web.cern.ch/CMST0/tier0/offline_config/ReplayOfflineConfiguration_C3.php",
                   "C4_vocms047": "https://cmst0.web.cern.ch/CMST0/tier0/offline_config/ReplayOfflineConfiguration_C4.php"
-                  #"vocms015": "https://cmst0.web.cern.ch/CMST0/tier0/offline_config/ReplayOfflineConfiguration_015.php",
-    }
+                  #"vocms015": "https://cmst0.web.cern.ch/CMST0/tier0/offline_config/ReplayOfflineConfiguration_015.php"
+                }
     return configUrl
 
-def instanceT0AST():
+def instanceT0ast():
     t0ast = {"vocms013": "CMS_T0AST_4",
              "vocms014": "CMS_T0AST_3",
              "vocms0313": "CMS_T0AST_2",
@@ -76,9 +49,8 @@ def loadCmswebInfo(key, cert, host):
 
     # This function is used to get all agent information from wmstats. The retrieved information is saved into a variable named WMStatsAgentInfo,
     # which is a dictionary with a key "rows" whose value is a list containing one dictionary per production or replay node.
-    # The information for production nodes can be explicitely seen in https://cmsweb.cern.ch/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo
-    # The information for replay nodes can be explicitely seen in https://cmsweb-testbed.cern.ch/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo
-
+    # WMStatsAgentInfo for production nodes can be explicitely seen in https://cmsweb.cern.ch/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo
+    # WMStatsAgentInfo for replay nodes can be explicitely seen in https://cmsweb-testbed.cern.ch/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo
 
     try:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
@@ -94,8 +66,9 @@ def loadCmswebInfo(key, cert, host):
         urn = "%s?%s" % (urn, urllib.parse.urlencode(params, doseq=True))
         connection.request("GET", urn, headers=headers) #key_file=key, cert_file=cert)
         response = connection.getresponse()
-        WMStatsAgentInfo = json.loads(response.read()) # A list with dictionaries where each dictionary contains information of a node and its agent
-        return WMStatsAgentInfo["rows"] # This is a list containing the agent information of each node
+        WMStatsAgentInfo = json.loads(response.read()) # A dictionary with a list with dictionaries where each dictionary contains information of a node and its agent
+        WMStatsAgentInfoList = WMStatsAgentInfo["rows"] # This is a list containing the agent information of each node
+        return WMStatsAgentInfoList
     except:
         errorMsg = "Error contacting CMSWEB WMStats\n"
         errorMsg += f"Response status: {response.status}\tResponse reason: {response.reason}\n"
@@ -167,13 +140,12 @@ def loadAgentInfo(WMStatsAgentInfoList, nodeId, NodeID):
                  'running'         : activeRunJobs['Running'],
                  'idle'            : activeRunJobs['Idle'],
                 }
-        agent.update({'agent in wmstats' : True})
-        agentNode = {NodeID : agent}
+        agent.update({'agent in wmstats' : True}) # We add this key to avoid running all the functions for agents that are not in wmstats
+        agentInfo = {NodeID : agent}
     except:
-        agentNode = {NodeID : {'agent in wmstats' : False}}
+        agentInfo = {NodeID : {'agent in wmstats' : False}}
 
-    return agentNode
-
+    return agentInfo
 
 def loadTier0Configuration(tier0ConfigFile, NodeID, replay):
     # All relevant information of the agent configuration resides in the configuration file. There, an object of type Configuration() is created.
@@ -208,66 +180,62 @@ def loadTier0Configuration(tier0ConfigFile, NodeID, replay):
         configuration.update({'RecoDelay' : RecoDelay})
 
     configuration.update({'ProcessingVersion' : ProcessingVersion})
-    nodeConfiguration = {NodeID : configuration}
+    tier0Configuration = {NodeID : configuration}
 
-    return nodeConfiguration
+    return tier0Configuration
     
-
-    return
- 
 def loadConfigUrlAndT0astInstance(NodeID):
     # This function returns a dictionary with the configuration file url and the T0AST instance relevant to a specific nodeId
     # This function is created to keep order of the tasks acomplished by the other load functions
-    nodeFileUrl = configurationFileUrl()
-    nodeT0ast = instanceT0AST()
-    nodeFileAndAST = {'nodeId' : NodeID,
-                      'configFileUrl' : nodeFileUrl[NodeID],
-                      'T0ast' : nodeT0ast[NodeID] 
-                      }
-    return nodeFileAndAST
+
+    configUrl = configurationFileUrl()
+    T0ast = instanceT0ast()
+    configUrlAndT0ast = {'Node ID'       : NodeID,
+                         'Configuration' : configUrl[NodeID],
+                         'T0AST'         : T0ast[NodeID] 
+                        }
+    return configUrlAndT0ast
 
 def packedAgentDictionary(nodeId, NodeID, tier0ConfigFile, key, cert, host, replay):
     # Gets dictionary returned by loadTier0Configuration, which contains relevant configuration information of the agent
     # Gets dictionary returned by loadAgentInfo, which contains info such as count of jobs by status, components down, node status
     # Gets dictionary from loadConfigUrlAndT0astInstance, which contains a link to a php configuration file and also the respective T0AST instance
     # Unites all three dictionaries into one named PackedAgent
-    try:
+
+    # WMStatsAgentInfoList is a list in which each index is a dictionary with all available agent information of one host node
+    WMStatsAgentInfoList = loadCmswebInfo(key, cert, host)
+
+    # Filters the information from WMStatsAgentInfoList, so that only desired values are retrieved
+    agentInfo = loadAgentInfo(WMStatsAgentInfoList, nodeId, NodeID)
+
+    # Once it gets data from wmstats, it moves on to retrieving tier0Configuration, config url and T0AST instance.
+    # It only does it if the agent is in cmsweb.
+    if agentInfo[NodeID]['agent in wmstats']:
         tier0Configuration = loadTier0Configuration(tier0ConfigFile, NodeID, replay)
-
-        # WMStatsAgentInfoList is a list in which each index is a dictionary with all available agent information of one host node
-        WMStatsAgentInfoList = loadCmswebInfo(key, cert, host)
-
-        # Filters the information from WMStatsAgentInfoList, so that only desired values are retrieved
-        agentInfo = loadAgentInfo(WMStatsAgentInfoList, nodeId, NodeID)
-
-        # Gets T0AST and ConfigFile url relevant to the specific node
         configUrlAndT0ast = loadConfigUrlAndT0astInstance(NodeID)
-
-        # Puts it all together into one dictionary
         PackedAgent = {NodeID : {**tier0Configuration[NodeID], **agentInfo[NodeID], **configUrlAndT0ast}}
-
-        # Finally we record the time in which the final dictionary was updated
-        currentTime = time.strftime("%H:%M:%S")
-        PackedAgent[NodeID].update({'update time' : currentTime})
-
-        return PackedAgent
-    
-    except IOError:
-        print("Could not read nodeId:", nodeId)
-        return {NodeID : {}}
-
-
-def writeReport(Node, NodeID, replay):
-    # This function is used to create the json files with all the node information in it. It takes a dictionary named Node, a nodeId and if it corresponds to replay
-    outputFileProd="/afs/cern.ch/user/c/cmst0/Antonio/data_{}.json".format(NodeID)
-    outputFileReplay="/afs/cern.ch/user/c/cmst0/Antonio/dataReplay_{}.json".format(NodeID)
-    if replay:
-            outputFile = outputFileReplay
     else:
-            outputFile = outputFileProd
-    data = Node
-    with open(outputFile, 'w') as outfile:
-            json.dump(data, outfile)
+        PackedAgent = {NodeID : agentInfo} # This one looks like {vocms0313 : {'agent in wmstats' : False}} 
+
+    # Finally we record the time in which the final dictionary was updated
+    currentTime = time.strftime("%H:%M:%S")
+    PackedAgent[NodeID].update({'update time' : currentTime})
+
+    return PackedAgent
+    
+def writeJsonFile(Node, NodeID, replay):
+    # This function is used to create the json files with all the node information in it. It takes a dictionary named Node, a nodeId and if it corresponds to replay
+
+    ProductionJsonFile = "/afs/cern.ch/user/c/cmst0/Antonio/data_{}.json".format(NodeID)
+    ReplayJsonFile = "/afs/cern.ch/user/c/cmst0/Antonio/dataReplay_{}.json".format(NodeID)
+
+    if replay:
+            JsonFile = ReplayJsonFile
+    else:
+            JsonFile = ProductionJsonFile
+
+    with open(JsonFile, 'w') as outfile:
+            json.dump(Node, outfile)
 
 def main():
     # The main function. This is the function that runs when the script is executed
@@ -286,7 +254,6 @@ def main():
     nodeId = subprocess.check_output('hostname', universal_newlines=True).strip() # Gets the vocms node id vocms0500.cern.ch
     NodeID = nodeId.split('.')[0] # Gets node id vocms0500
 
-
     productionNode = packedAgentDictionary(nodeId, NodeID, tier0ConfigFileProd, key, cert, productionWmstats, False)
     replayNode = packedAgentDictionary(nodeId, NodeID, tier0ConfigFileReplay, key, cert, replayWmstats, True)
 
@@ -301,20 +268,6 @@ def main():
         print ('Report for replay node {} has been written successfully'.format(NodeID))
     else:
         print ("No information for the replay node {}".format(NodeID))
-    #try:
-        #if not prodNode:
-            #print("Exiting. No report written for production nodes.")
-        #else:
-            #writeReport(prodNode, NodeID, False)
-        #if not replayNode:
-            #replayNode = {}
-            #writeReport(replayNode, NodeID, True)
-            #print("Exiting. No report written for replay nodes.")
-        #else:
-            #writeReport(replayNode, nodeId, True)
-    #except Exception as msg:
-        #print(msg)
-        #sys.exit(1)
     
 if __name__ == "__main__":
     sys.exit(main())
