@@ -1,5 +1,3 @@
-#! /usr/bin/env python
-
 import sys
 import json
 import time
@@ -46,12 +44,11 @@ def instanceT0ast():
     return t0ast
 
 def loadCmswebInfo(key, cert, host):
-
-    # This function is used to get all agent information from wmstats. The retrieved information is saved into a variable named WMStatsAgentInfo,
-    # which is a dictionary with a key "rows" whose value is a list containing one dictionary per production or replay node.
-    # WMStatsAgentInfo for production nodes can be explicitely seen in https://cmsweb.cern.ch/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo
-    # WMStatsAgentInfo for replay nodes can be explicitely seen in https://cmsweb-testbed.cern.ch/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo
-
+    """
+    - This function is used to get all agent information from wmstats. The retrieved information is saved into a variable named WMStatsAgentInfo, which is a dictionary with a key "rows" whose value is a list containing one dictionary per production or replay node.
+    - WMStatsAgentInfo for production nodes can be explicitely seen in https://cmsweb.cern.ch/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo
+    - WMStatsAgentInfo for replay nodes can be explicitely seen in https://cmsweb-testbed.cern.ch/couchdb/tier0_wmstats/_design/WMStats/_view/agentInfo
+    """
     try:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(certfile=cert, keyfile=key)
@@ -78,54 +75,53 @@ def loadCmswebInfo(key, cert, host):
         connection.close()
 
 def loadAgentInfo(WMStatsAgentInfoList, nodeId, NodeID):
+    """
+    - Gets WMStatsAgentInfoList from loadCmswebInfo(key, cert, host)
+    - nodeInfo = WMStatsAgentInfoList is a list in which each index is a dictionary with all available agent information of one host node
+    - We define jobsByState = nodeInfo["value"]["WMBS_INFO"]["wmbsCountByState"] which is a dictionary with job states and their respective amounts
+        - jobsByState is a dictionary that looks like 
+        - {'submitcooloff': 0, 
+        -  'jobpaused': 0, 
+        -  'executing': 0, 
+        -  'created': 0, 
+        -  'exhausted': 0, 
+        -  'submitpaused': 0, 
+        -  'killed': 0, 
+        -  'success': 0, 
+        -  'createpaused': 0, 
+        -  'createfailed': 0, 
+        -  'cleanout': 56161, 
+        -  'new': 0, 
+        -  'retrydone': 0, 
+        -  'jobfailed': 0, 
+        -  'complete': 0, 
+        -  'none': 0, 
+        -  'submitfailed': 0, 
+        -  'createcooloff': 0, 
+        -  'jobcooloff': 0}
 
-    # Gets WMStatsAgentInfoList from loadCmswebInfo(key, cert, host)
-    # nodeInfo = WMStatsAgentInfoList is a list in which each index is a dictionary with all available agent information of one host node
-    # We define jobsByState = WMStatsAgentInfo["value"]["WMBS_INFO"]["wmbsCountByState"] which is a dictionary with job states and their respective amounts 
-    # in the agent of node in index 0
-        # jobsByState is a dictionary that looks like 
-        # {'submitcooloff': 0, 
-        #  'jobpaused': 0, 
-        #  'executing': 0, 
-        #  'created': 0, 
-        #  'exhausted': 0, 
-        #  'submitpaused': 0, 
-        #  'killed': 0, 
-        #  'success': 0, 
-        #  'createpaused': 0, 
-        #  'createfailed': 0, 
-        #  'cleanout': 56161, 
-        #  'new': 0, 
-        #  'retrydone': 0, 
-        #  'jobfailed': 0, 
-        #  'complete': 0, 
-        #  'none': 0, 
-        #  'submitfailed': 0, 
-        #  'createcooloff': 0, 
-        #  'jobcooloff': 0}
+    - We define activeRunJobs = nodeInfo["value"]["WMBS_INFO"]["activeRunJobByStatus"] which is a dictionary with the active job states and their respective amounts
+        - activeRunJobs is a dictionary that looks like
+        - {'Suspended': 0, 
+        -  'Held': 0, 
+        -  'Timeout': 0, 
+        -  'Running': 0, 
+        -  'Idle': 0, 
+        -  'Completed': 0, 
+        -  'Unknown': 0, 
+        -  'Removed': 0, 
+        -  'New': 0, 
+        -  'TransferOutput': 0}
 
-    # We define activeRunJobs = WMStatsAgentInfo["rows"][0]["value"]["WMBS_INFO"]["activeRunJobByStatus"] which is a dictionary with the active job states and their respective amounts
-        # activeRunJobs is a dictionary that looks like
-        #{'Suspended': 0, 
-        # 'Held': 0, 
-        # 'Timeout': 0, 
-        # 'Running': 0, 
-        # 'Idle': 0, 
-        # 'Completed': 0, 
-        # 'Unknown': 0, 
-        # 'Removed': 0, 
-        # 'New': 0, 
-        # 'TransferOutput': 0}
-
-    # jobsByState has job states as they are in wmbs
-    # activeRunJobs has job states as they are in condor
-    # We create a dictionary called agent which has the desired keys within the jobsByState and activeRunJobs dictionaries
-    # We add node id and down components to the agent dictionary
-    # We create another dictionary named agentNode with node id as key and the value will be the respective agent dictionary
-    
+    - jobsByState has job states as they are in wmbs
+    - activeRunJobs has job states as they are in condor
+    - We create a dictionary called agent which has the desired keys within the jobsByState and activeRunJobs dictionaries
+    - We add node id and down components to the agent dictionary
+    - We create another dictionary named agentNode with node id as key and the value will be the respective agent dictionary
+    """
     nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfoList if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent. It may be None if the agent is not in wmstats
 
-    try:
+    if nodeInfo is not None:
         jobsByState = nodeInfo["value"]["WMBS_INFO"]["wmbsCountByState"] # Job status in WMBS
         activeRunJobs = nodeInfo["value"]["WMBS_INFO"]["activeRunJobByStatus"] # Job status in condor
 
@@ -142,17 +138,18 @@ def loadAgentInfo(WMStatsAgentInfoList, nodeId, NodeID):
                 }
         agent.update({'agent in wmstats' : True}) # We add this key to avoid running all the functions for agents that are not in wmstats
         agentInfo = {NodeID : agent}
-    except:
+    else:
         agentInfo = {NodeID : {'agent in wmstats' : False}}
 
     return agentInfo
-
+    
 def loadTier0Configuration(tier0ConfigFile, NodeID, replay):
-    # All relevant information of the agent configuration resides in the configuration file. There, an object of type Configuration() is created.
-    # To access the configuration info, the loadConfigurationFile(configFile) is used to create the tier0Config object with the agent configuration.
-    # A dictionary configuration = {} is created, where all the relevant attributes of tier0Config will be saved
-    # This function returns the dictionary configuration  
-
+    """
+    - All relevant information of the agent configuration resides in the configuration file. There, an object of type Configuration() is created.
+    - To access the configuration info, the loadConfigurationFile(configFile) is used to create the tier0Config object with the agent configuration.
+    - A dictionary configuration = {} is created, where all the relevant attributes of tier0Config will be saved
+    - This function returns the dictionary configuration  
+    """
     try:
         tier0Config = loadConfigurationFile(tier0ConfigFile)
     except IOError:
@@ -168,7 +165,6 @@ def loadTier0Configuration(tier0ConfigFile, NodeID, replay):
                      }
     if replay:
         Runs = tier0Config.Global.InjectRuns
-        ProcessingVersion = tier0Config.Datasets.Default.ProcessingVersion
         configuration.update({'Runs' : Runs})
     else:
         MinRun = tier0Config.Global.InjectMinRun
@@ -178,15 +174,17 @@ def loadTier0Configuration(tier0ConfigFile, NodeID, replay):
         configuration.update({'MinRun' : MinRun})
         configuration.update({'MaxRun' : MaxRun})
         configuration.update({'RecoDelay' : RecoDelay})
+        configuration.update({'ProcessingVersion' : ProcessingVersion})
 
-    configuration.update({'ProcessingVersion' : ProcessingVersion})
     tier0Configuration = {NodeID : configuration}
 
     return tier0Configuration
     
 def loadConfigUrlAndT0astInstance(NodeID):
-    # This function returns a dictionary with the configuration file url and the T0AST instance relevant to a specific nodeId
-    # This function is created to keep order of the tasks acomplished by the other load functions
+    """
+    - This function returns a dictionary with the configuration file url and the T0AST instance relevant to a specific nodeId
+    - This function is created to keep order of the tasks acomplished by the other load functions
+    """
 
     configUrl = configurationFileUrl()
     T0ast = instanceT0ast()
@@ -197,12 +195,15 @@ def loadConfigUrlAndT0astInstance(NodeID):
     return configUrlAndT0ast
 
 def packedAgentDictionary(nodeId, NodeID, tier0ConfigFile, key, cert, host, replay):
-    # Gets dictionary returned by loadTier0Configuration, which contains relevant configuration information of the agent
-    # Gets dictionary returned by loadAgentInfo, which contains info such as count of jobs by status, components down, node status
-    # Gets dictionary from loadConfigUrlAndT0astInstance, which contains a link to a php configuration file and also the respective T0AST instance
-    # Unites all three dictionaries into one named PackedAgent
+    """
+    - Gets dictionary returned by loadTier0Configuration, which contains relevant configuration information of the agent
+    - Gets dictionary returned by loadAgentInfo, which contains info such as count of jobs by status, components down, node status
+    - Gets dictionary from loadConfigUrlAndT0astInstance, which contains a link to a php configuration file and also the respective T0AST instance
+    - Unites all three dictionaries into one named PackedAgent
 
-    # WMStatsAgentInfoList is a list in which each index is a dictionary with all available agent information of one host node
+    - WMStatsAgentInfoList is a list in which each index is a dictionary with all available agent information of one host node
+    """
+
     WMStatsAgentInfoList = loadCmswebInfo(key, cert, host)
 
     # Filters the information from WMStatsAgentInfoList, so that only desired values are retrieved
@@ -224,7 +225,9 @@ def packedAgentDictionary(nodeId, NodeID, tier0ConfigFile, key, cert, host, repl
     return PackedAgent
     
 def writeJsonFile(Node, NodeID, replay):
-    # This function is used to create the json files with all the node information in it. It takes a dictionary named Node, a nodeId and if it corresponds to replay
+    """
+    - This function is used to create the json files with all the node information in it. It takes a dictionary named Node, a nodeId and if it corresponds to replay
+    """
 
     ProductionJsonFile = "/afs/cern.ch/user/c/cmst0/Antonio/data_{}.json".format(NodeID)
     ReplayJsonFile = "/afs/cern.ch/user/c/cmst0/Antonio/dataReplay_{}.json".format(NodeID)
@@ -238,11 +241,13 @@ def writeJsonFile(Node, NodeID, replay):
             json.dump(Node, outfile)
 
 def main():
-    # The main function. This is the function that runs when the script is executed
-    # Defines important variables such as the paths to the production and replay files, the nodeId, and the host, key and cert for getting the information from WMStats
-    # Through function packedAgentDictionary() it creates a dictionary with all agent information
-    # Through function writeReport() it throws the created dictionary into a json file in the path specified in that function
-
+    """
+    - The main function. This is the function that runs when the script is executed
+    - Defines important variables such as the paths to the production and replay files, the nodeId, and the host, key and cert for getting the information from WMStats
+    - Through function packedAgentDictionary() it creates a dictionary with all agent information
+    - Through function writeReport() it throws the created dictionary into a json file in the path specified in that function
+    """
+    
     tier0ConfigFileProd = "/data/tier0/admin/ProdOfflineConfiguration.py"
     tier0ConfigFileReplay = "/data/tier0/admin/ReplayOfflineConfiguration.py"
 
@@ -271,6 +276,7 @@ def main():
     
 if __name__ == "__main__":
     sys.exit(main())
+
 
 
 
