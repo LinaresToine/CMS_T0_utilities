@@ -74,7 +74,7 @@ def loadCmswebInfo(key, cert, host):
     finally:
         connection.close()
 
-def loadAgentInfo(WMStatsAgentInfoList, nodeId, NodeID):
+def loadAgentInfo(WMStatsAgentInfoList, NodeID):
     """
     - Gets WMStatsAgentInfoList from loadCmswebInfo(key, cert, host)
     - nodeInfo = WMStatsAgentInfoList is a list in which each index is a dictionary with all available agent information of one host node
@@ -119,7 +119,7 @@ def loadAgentInfo(WMStatsAgentInfoList, nodeId, NodeID):
     - We add node id and down components to the agent dictionary
     - We create another dictionary named agentNode with node id as key and the value will be the respective agent dictionary
     """
-    nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfoList if nodeDictionary.get('id') == nodeId), None) # This gets only the information relevant to one node and agent. It may be None if the agent is not in wmstats
+    nodeInfo = next((nodeDictionary for nodeDictionary in WMStatsAgentInfoList if nodeDictionary.get('id').split('.')[0] == NodeID), None) # This gets only the information relevant to one node and agent. It may be None if the agent is not in wmstats
 
     if nodeInfo is not None:
         jobsByState = nodeInfo["value"]["WMBS_INFO"]["wmbsCountByState"] # Job status in WMBS
@@ -194,20 +194,17 @@ def loadConfigUrlAndT0astInstance(NodeID):
                         }
     return configUrlAndT0ast
 
-def packedAgentDictionary(nodeId, NodeID, tier0ConfigFile, key, cert, host, replay):
+def packedAgentDictionary(NodeID, tier0ConfigFile, key, cert, host, replay):
     """
     - Gets dictionary returned by loadTier0Configuration, which contains relevant configuration information of the agent
     - Gets dictionary returned by loadAgentInfo, which contains info such as count of jobs by status, components down, node status
     - Gets dictionary from loadConfigUrlAndT0astInstance, which contains a link to a php configuration file and also the respective T0AST instance
     - Unites all three dictionaries into one named PackedAgent
 
-    - WMStatsAgentInfoList is a list in which each index is a dictionary with all available agent information of one host node
     """
 
-    WMStatsAgentInfoList = loadCmswebInfo(key, cert, host)
-
-    # Filters the information from WMStatsAgentInfoList, so that only desired values are retrieved
-    agentInfo = loadAgentInfo(WMStatsAgentInfoList, nodeId, NodeID)
+    WMStatsAgentInfoList = loadCmswebInfo(key, cert, host) # Gets all cmsweb information for all agents
+    agentInfo = loadAgentInfo(WMStatsAgentInfoList, NodeID) # Filters the information from WMStatsAgentInfoList, so that only desired values from one particular node are retrieved
 
     # Once it gets data from wmstats, it moves on to retrieving tier0Configuration, config url and T0AST instance.
     # It only does it if the agent is in cmsweb.
@@ -259,8 +256,8 @@ def main():
     nodeId = subprocess.check_output('hostname', universal_newlines=True).strip() # Gets the vocms node id vocms0500.cern.ch
     NodeID = nodeId.split('.')[0] # Gets node id vocms0500
 
-    productionNode = packedAgentDictionary(nodeId, NodeID, tier0ConfigFileProd, key, cert, productionWmstats, False)
-    replayNode = packedAgentDictionary(nodeId, NodeID, tier0ConfigFileReplay, key, cert, replayWmstats, True)
+    productionNode = packedAgentDictionary(NodeID, tier0ConfigFileProd, key, cert, productionWmstats, False)
+    replayNode = packedAgentDictionary(NodeID, tier0ConfigFileReplay, key, cert, replayWmstats, True)
 
     if productionNode[NodeID]['agent in wmstats']:
         writeJsonFile(productionNode, NodeID, False)
