@@ -1,5 +1,6 @@
 import sys
 import json
+import os
 import time
 import urllib.parse
 from http.client import HTTPSConnection
@@ -221,10 +222,12 @@ def packedAgentDictionary(NodeID, tier0ConfigFile, key, cert, host, replay):
 
     return PackedAgent
     
-def writeJsonFile(Node, NodeID, replay):
+def writeNodeJsonFile(Node, NodeID, replay):
     """
     - This function is used to create the json files with all the node information in it. It takes a dictionary named Node, a nodeId and if it corresponds to replay
     """
+    #ProductionJsonFile = "/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/data_{}.json".format(NodeID)
+    #ReplayJsonFile = "/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/dataReplay_{}.json".format(NodeID)
 
     ProductionJsonFile = "/afs/cern.ch/user/c/cmst0/Antonio/data_{}.json".format(NodeID)
     ReplayJsonFile = "/afs/cern.ch/user/c/cmst0/Antonio/dataReplay_{}.json".format(NodeID)
@@ -236,6 +239,45 @@ def writeJsonFile(Node, NodeID, replay):
 
     with open(JsonFile, 'w') as outfile:
             json.dump(Node, outfile)
+
+def writeJsonFile(replay):
+    #nodeJsonFilesPath = '/afs/cern.ch/user/c/cmst0/www/tier0/nodeSummary_frontend/'
+    ProductionJsonFile = "/afs/cern.ch/user/c/cmst0/Antonio/data.json"
+    ReplayJsonFile = "/afs/cern.ch/user/c/cmst0/Antonio/dataReplay.json"
+    nodeJsonFilesPath = '/afs/cern.ch/user/c/cmst0/Antonio/'
+    data = {}
+    dataReplay = {}
+    # Iterate over files in the directory
+    if not replay:
+        for nodeJsonFile in os.listdir(nodeJsonFilesPath):
+            # Check if the file name matches the pattern (data_x.json)
+            if nodeJsonFile.startswith('data_') and nodeJsonFile.endswith('.json'):
+                # Construct the full path to the file
+                jsonFilePath = os.path.join(nodeJsonFilesPath, nodeJsonFile)
+                
+                # Open the JSON file for reading
+                with open(jsonFilePath, 'r') as file:
+                    # Load the JSON data from the file
+                    nodeData = json.load(file)
+                data.update({nodeData})
+
+        with open(ProductionJsonFile, 'w') as outfile:
+                json.dump(data, outfile)
+    else:    
+        for nodeJsonFileReplay in os.listdir(nodeJsonFilesPath):
+            # Check if the file name matches the pattern (data_x.json)
+            if nodeJsonFileReplay.startswith('dataReplay_') and nodeJsonFileReplay.endswith('.json'):
+                # Construct the full path to the file
+                jsonFilePath = os.path.join(nodeJsonFilesPath, nodeJsonFileReplay)
+                
+                # Open the JSON file for reading
+                with open(jsonFilePath, 'r') as fileReplay:
+                    # Load the JSON data from the file
+                    nodeDataReplay = json.load(fileReplay)
+                dataReplay.update({nodeDataReplay})
+
+        with open(ReplayJsonFile, 'w') as outfile:
+                json.dump(dataReplay, outfile)
 
 def main():
     """
@@ -260,16 +302,19 @@ def main():
     replayNode = packedAgentDictionary(NodeID, tier0ConfigFileReplay, key, cert, replayWmstats, True)
 
     if productionNode[NodeID]['agent in wmstats']:
-        writeJsonFile(productionNode, NodeID, False)
+        writeNodeJsonFile(productionNode, NodeID, False)
         print ('Report for production node {} has been written successfully'.format(NodeID))
     else:
         print ("No information for the production node {}".format(NodeID))
 
     if replayNode[NodeID]['agent in wmstats']:
-        writeJsonFile(replayNode, NodeID, True)
+        writeNodeJsonFile(replayNode, NodeID, True)
         print ('Report for replay node {} has been written successfully'.format(NodeID))
     else:
         print ("No information for the replay node {}".format(NodeID))
+    
+    writeJsonFile(replay = False)
+    writeJsonFile(replay = True)
     
 if __name__ == "__main__":
     sys.exit(main())
